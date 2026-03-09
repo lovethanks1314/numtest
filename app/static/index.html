@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>數字輸入 - Number Tracker</title>
+    <style>
+      :root {
+        --primary: #4f46e5;
+        --bg: #f9fafb;
+      }
+      body {
+        font-family:
+          "Inter",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background-color: var(--bg);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+      }
+      .container {
+        background: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        width: 100%;
+        max-width: 400px;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+        text-align: center;
+        color: #111827;
+      }
+      .form-group {
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+      }
+      input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.5rem;
+        box-sizing: border-box;
+      }
+      button {
+        width: 100%;
+        padding: 0.75rem;
+        background-color: var(--primary);
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+      button:hover {
+        opacity: 0.9;
+      }
+      #message {
+        margin-top: 1rem;
+        text-align: center;
+        font-size: 0.875rem;
+      }
+      .success {
+        color: #10b981;
+      }
+      .error {
+        color: #ef4444;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>輸入數字</h1>
+      <form id="numberForm">
+        <div class="form-group">
+          <label for="numberInput">請輸入一個數字</label>
+          <input
+            type="number"
+            id="numberInput"
+            required
+            placeholder="例如: 45"
+          />
+        </div>
+        <button type="submit" id="submitBtn">送出</button>
+      </form>
+      <div id="message"></div>
+      <div style="margin-top: 1rem; text-align: center">
+        <a
+          href="/admin"
+          style="color: #6b7280; text-decoration: none; font-size: 0.8rem"
+          >前往後台管理 &rarr;</a
+        >
+      </div>
+    </div>
+
+    <script>
+      document
+        .getElementById("numberForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const val = document.getElementById("numberInput").value;
+          const msg = document.getElementById("message");
+          const btn = document.getElementById("submitBtn");
+
+          msg.textContent = "傳送中...";
+          msg.className = "";
+          btn.disabled = true;
+
+          try {
+            const res = await fetch("/api/numbers", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ value: parseInt(val) }),
+            });
+
+            if (res.ok) {
+              msg.textContent = "送出成功！";
+              msg.className = "success";
+              document.getElementById("numberInput").value = "";
+            } else {
+              const err = await res.json();
+              msg.textContent = "錯誤: " + (err.detail || "未知錯誤");
+              msg.className = "error";
+            }
+          } catch (e) {
+            msg.textContent = "連線失敗";
+            msg.className = "error";
+          } finally {
+            btn.disabled = false;
+          }
+        });
+    </script>
+  </body>
+</html>

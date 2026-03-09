@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>管理後台 - Number Tracker</title>
+    <!-- 引入 Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        background: #f3f4f6;
+        padding: 2rem;
+        margin: 0;
+      }
+      .card {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 1.5rem;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 1.25rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.75rem;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      th {
+        background: #f9fafb;
+        font-weight: 600;
+      }
+      .status {
+        padding: 0.25rem 0.5rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: bold;
+      }
+      .danger {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+      .normal {
+        background: #dcfce7;
+        color: #15803d;
+      }
+      .badge-danger {
+        border: 2px solid #ef4444;
+      }
+      #connection-status {
+        font-size: 0.8rem;
+        margin-bottom: 1rem;
+        color: #6b7280;
+      }
+      .new-row {
+        animation: highlight 2s ease-out;
+      }
+      @keyframes highlight {
+        from {
+          background-color: #fef08a;
+        }
+        to {
+          background-color: transparent;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1rem;
+        "
+      >
+        <h1 style="margin: 0">數據監控後台 (Realtime Enabled)</h1>
+        <a
+          href="/"
+          style="
+            font-size: 0.875rem;
+            color: #4f46e5;
+            text-decoration: none;
+            font-weight: 500;
+          "
+          >&larr; 回到輸入頁面</a
+        >
+      </div>
+      <div id="connection-status">正在載入設定...</div>
+      <table id="numbersTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>數值</th>
+            <th>狀態</th>
+            <th>建立時間</th>
+          </tr>
+        </thead>
+        <tbody id="numbersBody">
+          <!-- 資料將動態插入 -->
+        </tbody>
+      </table>
+    </div>
+
+    <script>
+      let supabaseClient;
+
+      async function init() {
+        // 透過 API 獲取環境變數 (或硬編碼如果是 Client 端安全的情況)
+        // 在此專案中，我們直接從端點或預期環境變數獲取。
+        // 為了簡化，建議在部署時將這兩個值寫入。
+        // 注意：不要在前端使用 Service Role Key。
+
+        // 這裡我們假設開發者會在部署後填入，或透過 app 獲取
+        // 由於 Render 會透過後端跑，我們可以由後端注入一個 config 路由
+        const CONFIG_URL = "/static/config.json"; // 我們等下建立這個或動態獲取
+
+        // 但為了最穩定方案，我們直接偵測目前 URL 並要求使用者設定
+        // 實際產品應使用環境變數注入
+        const SUPABASE_URL = ""; // TODO: 使用者填入或自動注入
+        const SUPABASE_ANON_KEY = ""; // TODO: 使用者填入或自動注入
+
+        if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+          document.getElementById("connection-status").innerHTML =
+            '<span style="color:red">警告: 未設定 Supabase 前端金鑰。請確診管理頁面能存取 Supabase URL 與 ANON KEY。</span>';
+        }
+
+        // 初始化客戶端 (這裡為了展示 Realtime，前端直接連 Supabase)
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // 1. 載入初始資料
+        const { data, error } = await supabaseClient
+          .from("numbers")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (data) {
+          data.forEach((item) => addRow(item, false));
+          document.getElementById("connection-status").textContent =
+            "即時連線中...";
+        }
+
+        // 2. 訂閱 Realtime
+        supabaseClient
+          .channel("schema-db-changes")
+          .on(
+            "postgres_changes",
+            { event: "INSERT", schema: "public", table: "numbers" },
+            (payload) => {
+              console.log("Change received!", payload);
+              addRow(payload.new, true);
+            },
+          )
+          .subscribe();
+      }
+
+      function addRow(item, isNew) {
+        const tbody = document.getElementById("numbersBody");
+        const row = document.createElement("tr");
+        if (isNew) row.className = "new-row";
+
+        const isDanger = item.value >= 55;
+        const statusHtml = isDanger
+          ? '<span class="status danger">危險</span>'
+          : '<span class="status normal">正常</span>';
+
+        row.innerHTML = `
+                <td>${item.id}</td>
+                <td style="${isDanger ? "font-weight:bold;color:red;" : ""}">${item.value}</td>
+                <td>${statusHtml}</td>
+                <td>${new Date(item.created_at).toLocaleString()}</td>
+            `;
+
+        if (isNew) {
+          tbody.insertBefore(row, tbody.firstChild);
+        } else {
+          tbody.appendChild(row);
+        }
+      }
+
+      // 雖然計畫說優先 Realtime，但為了讓使用者方便填入金鑰，
+      // 建議前端金鑰透過一個隱藏的方式或引導設定。
+      // 為了解決「不要硬寫金鑰」且「前端需連線」的衝突：
+      // 我們新增一個 API 讓前端獲取 ANON_KEY。
+
+      async function fetchConfigAndInit() {
+        try {
+          // 我們之後要在 main.py 新增這個路由
+          const res = await fetch("/api/config");
+          const config = await res.json();
+
+          if (config.supabase_url && config.supabase_anon_key) {
+            window.SUPABASE_URL = config.supabase_url;
+            window.SUPABASE_ANON_KEY = config.supabase_anon_key;
+
+            // 執行初始化
+            const supabaseClient = supabase.createClient(
+              window.SUPABASE_URL,
+              window.SUPABASE_ANON_KEY,
+            );
+
+            // 重複 init 邏輯 (略，改寫如下)
+            const { data } = await supabaseClient
+              .from("numbers")
+              .select("*")
+              .order("created_at", { ascending: false })
+              .limit(50);
+            if (data) data.forEach((item) => addRow(item, false));
+
+            supabaseClient
+              .channel("realtime-numbers")
+              .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "numbers" },
+                (p) => addRow(p.new, true),
+              )
+              .subscribe();
+            document.getElementById("connection-status").textContent =
+              "即時連線中 (Realtime Authorized)";
+          }
+        } catch (e) {
+          document.getElementById("connection-status").textContent =
+            "配置讀取失敗";
+        }
+      }
+
+      fetchConfigAndInit();
+    </script>
+  </body>
+</html>
